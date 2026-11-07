@@ -20,9 +20,10 @@ enum class InkType {
   COPY_COLOR = 2,
   LOCK_ALPHA = 3,
   SHADING = 4,
+  REMAP = 5,
 
   FIRST = DEFAULT,
-  LAST = SHADING,
+  LAST = REMAP,
 };
 
 inline bool inkHasOpacity(InkType inkType)

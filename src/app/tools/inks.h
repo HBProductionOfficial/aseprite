@@ -205,6 +205,28 @@ public:
   }
 };
 
+// Replaces the Remap pair colors under the brush. Other colors are left alone.
+class RemapInk : public PaintInk {
+public:
+  RemapInk() : PaintInk(PaintInk::Simple) {}
+
+  Ink* clone() override { return new RemapInk(*this); }
+
+  bool isPaint() const override { return true; }
+  bool isRemap() const override { return true; }
+
+  void prepareInk(ToolLoop* loop) override
+  {
+    // Tiles are not colors, paint them as usual
+    if (loop->getDstImage()->pixelFormat() == IMAGE_TILEMAP)
+      PaintInk::prepareInk(loop);
+    else if (loop->getBrush()->type() == doc::kImageBrushType)
+      setProc(get_ink_proc<BrushRemapInkProcessing>(loop));
+    else
+      setProc(get_ink_proc<RemapInkProcessing>(loop));
+  }
+};
+
 class GradientInk : public BaseInk {
 public:
   Ink* clone() override { return new GradientInk(*this); }

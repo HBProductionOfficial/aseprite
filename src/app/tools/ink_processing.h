@@ -965,6 +965,31 @@ private:
 };
 
 //////////////////////////////////////////////////////////////////////
+// Remap Ink
+//////////////////////////////////////////////////////////////////////
+
+// Reads the image from before the stroke, so a pixel is remapped once
+// even when the brush passes over it again.
+template<typename ImageTraits>
+class RemapInkProcessing
+  : public DoubleInkProcessing<RemapInkProcessing<ImageTraits>, ImageTraits> {
+public:
+  using Base = DoubleInkProcessing<RemapInkProcessing<ImageTraits>, ImageTraits>;
+  using pixel_t = typename ImageTraits::pixel_t;
+
+  RemapInkProcessing(ToolLoop* loop) : m_table(loop->getRemapTable()) {}
+
+  void processPixel(int x, int y)
+  {
+    const pixel_t src = *Base::m_srcAddress;
+    *Base::m_dstAddress = (m_table ? pixel_t((*m_table)(src)) : src);
+  }
+
+private:
+  const PixelRemapTable* m_table;
+};
+
+//////////////////////////////////////////////////////////////////////
 // Gradient Ink
 //////////////////////////////////////////////////////////////////////
 
@@ -1866,6 +1891,36 @@ void BrushShadingInkProcessing<GrayscaleTraits>::processPixel(int x, int y)
     }
     default: ASSERT(false); return;
   }
+};
+
+//////////////////////////////////////////////////////////////////////
+// Brush Ink - Remap ink type
+//////////////////////////////////////////////////////////////////////
+
+// Remaps inside the brush mask (see alignPixelPoint()). The brush colors
+// are ignored because a right-click repaints them with the BG color.
+template<typename ImageTraits>
+class BrushRemapInkProcessing : public BrushInkProcessingBase<ImageTraits> {
+public:
+  using pixel_t = typename ImageTraits::pixel_t;
+
+  BrushRemapInkProcessing(ToolLoop* loop)
+    : BrushInkProcessingBase<ImageTraits>(loop)
+    , m_table(loop->getRemapTable())
+  {
+  }
+
+  void processPixel(int x, int y) override
+  {
+    if (!this->alignPixelPoint(x, y))
+      return;
+
+    const pixel_t src = *this->m_srcAddress;
+    *this->m_dstAddress = (m_table ? pixel_t((*m_table)(src)) : src);
+  }
+
+private:
+  const PixelRemapTable* m_table;
 };
 
 //////////////////////////////////////////////////////////////////////

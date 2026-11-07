@@ -112,6 +112,7 @@ Ink* ActiveToolManager::adjustToolInkDependingOnSelectedInkType(Ink* ink,
       case tools::InkType::COPY_COLOR: id = tools::WellKnownInks::PaintCopy; break;
       case tools::InkType::LOCK_ALPHA: id = tools::WellKnownInks::PaintLockAlpha; break;
       case tools::InkType::SHADING:    id = tools::WellKnownInks::Shading; break;
+      case tools::InkType::REMAP:      id = tools::WellKnownInks::Remap; break;
     }
     if (id)
       ink = m_toolbox->getInkById(id);
@@ -239,13 +240,17 @@ void ActiveToolManager::setAllowQuickToolChanges(const bool state)
 // static
 bool ActiveToolManager::isToolAffectedByRightClickMode(Tool* tool)
 {
-  bool shadingMode = (Preferences::instance().tool(tool).ink() == InkType::SHADING);
+  const InkType inkType = Preferences::instance().tool(tool).ink();
+  bool shadingMode = (inkType == InkType::SHADING || inkType == InkType::REMAP);
   if (shadingMode) {
     if (auto* contextBar = App::instance()->contextBar()) {
       // Shading ink is only enabled if we have a shade of two or more
       // colors selected, in other case we disable it so a right-click
       // can be used for its configured action.
-      shadingMode = (contextBar->getShade().size() >= 2);
+      // Remap ink is disabled the same way if it has no pairs to revert.
+      shadingMode = (inkType == InkType::SHADING ?
+                       contextBar->getShade().size() >= 2 :
+                       !reverse_remap_pairs(contextBar->getRemapPairs()).empty());
     }
   }
 

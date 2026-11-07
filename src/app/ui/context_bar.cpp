@@ -48,6 +48,7 @@
 #include "app/ui/icon_button.h"
 #include "app/ui/keyboard_shortcuts.h"
 #include "app/ui/layer_frame_comboboxes.h"
+#include "app/ui/remap_slots.h"
 #include "app/ui/sampling_selector.h"
 #include "app/ui/selection_mode_field.h"
 #include "app/ui/skin/skin_theme.h"
@@ -611,6 +612,7 @@ public:
       case InkType::COPY_COLOR:        part = theme->parts.inkCopyColor(); break;
       case InkType::LOCK_ALPHA:        part = theme->parts.inkLockAlpha(); break;
       case InkType::SHADING:           part = theme->parts.inkShading(); break;
+      case InkType::REMAP:             part = theme->parts.inkRemap(); break;
     }
 
     getItem(0)->setIcon(part);
@@ -800,6 +802,178 @@ private:
   std::vector<Shade> m_shades;
   bool m_loaded;
   obs::scoped_connection m_conn;
+};
+
+// Remap pairs strip plus a menu to edit all pairs and saved remap sets.
+// Pairs are kept in the config file.
+class ContextBar::InkRemapField : public HBox {
+public:
+  InkRemapField()
+    : m_button(SkinTheme::get(this)->parts.iconArrowDown())
+    , m_slots(remap_pairs_from_string(get_config_string("remap", "pairs", "")),
+              RemapSlots::Editable)
+  {
+    addChild(&m_button);
+    addChild(&m_slots);
+
+    m_slots.Change.connect([this] { savePairs(); });
+    m_button.setFocusStop(false);
+    m_button.Click.connect([this] { onShowMenu(); });
+
+    initTheme();
+  }
+
+  ~InkRemapField() { saveSets(); }
+
+  RemapSlots* slots() { return &m_slots; }
+  const RemapPairs& pairs() const { return m_slots.pairs(); }
+
+private:
+  void onInitTheme(InitThemeEvent& ev) override
+  {
+    HBox::onInitTheme(ev);
+    auto theme = SkinTheme::get(this);
+    noBorderNoChildSpacing();
+    m_button.setBgColor(theme->colors.workspace());
+  }
+
+  void onShowMenu()
+  {
+    loadSets();
+    const gfx::Rect bounds = m_button.bounds();
+    const bool hasPairs = !m_slots.pairs().empty();
+
+    Menu menu;
+    MenuItem add(Strings::remap_slots_add_pair());
+    MenuItem fromPalette(Strings::remap_slots_from_palette());
+    MenuItem swap(Strings::remap_slots_swap_rows());
+    MenuItem clear(Strings::remap_slots_clear_all());
+    MenuSeparator separator;
+    MenuItem save(Strings::remap_slots_save_set());
+    menu.addChild(&add);
+    menu.addChild(&fromPalette);
+    menu.addChild(&swap);
+    menu.addChild(&clear);
+    menu.addChild(&separator);
+    menu.addChild(&save);
+
+    add.setEnabled(int(m_slots.pairs().size()) < kMaxRemapPairs);
+    fromPalette.setEnabled(paletteSelectionPairs().size() > 0);
+    swap.setEnabled(hasPairs);
+    clear.setEnabled(hasPairs);
+    save.setEnabled(hasPairs);
+
+    add.Click.connect([this] {
+      auto& pref = Preferences::instance();
+      m_slots.addPair(pref.colorBar.fgColor(), pref.colorBar.bgColor());
+    });
+    fromPalette.Click.connect([this] { setPairs(paletteSelectionPairs()); });
+    swap.Click.connect([this] { m_slots.swapRows(); });
+    clear.Click.connect([this] { setPairs(RemapPairs()); });
+    save.Click.connect([this] { m_sets.push_back(m_slots.pairs()); });
+
+    if (!m_sets.empty()) {
+      auto theme = SkinTheme::get(this);
+      menu.addChild(new MenuSeparator);
+
+      for (int i = 0; i < int(m_sets.size()); ++i) {
+        auto setWidget = new RemapSlots(m_sets[i], RemapSlots::ClickWhole);
+        setWidget->setExpansive(true);
+        setWidget->Change.connect([this, i] { setPairs(m_sets[i]); });
+
+        auto close = new IconButton(theme->parts.iconClose());
+        close->InitTheme.connect(
+          [close] { close->setBgColor(SkinTheme::get(close)->colors.menuitemNormalFace()); });
+        close->initTheme();
+        close->Click.connect([this, i, close] {
+          m_sets.erase(m_sets.begin() + i);
+          close->closeWindow();
+        });
+
+        auto item = new HBox();
+        item->InitTheme.connect([item] { item->noBorderNoChildSpacing(); });
+        item->initTheme();
+        item->addChild(setWidget);
+        item->addChild(close);
+        menu.addChild(item);
+      }
+    }
+
+    menu.showPopup(gfx::Point(bounds.x, bounds.y2()), display());
+    m_button.invalidate();
+  }
+
+  // Selected palette entries in index order: the first half are the
+  // colors to replace, the second half the colors that replace them.
+  RemapPairs paletteSelectionPairs() const
+  {
+    RemapPairs pairs;
+    auto* colorBar = ColorBar::instance();
+    if (!colorBar)
+      return pairs;
+
+    doc::PalettePicks picks;
+    colorBar->getPaletteView()->getSelectedEntries(picks);
+
+    std::vector<int> indexes;
+    for (int i = 0; i < picks.size(); ++i) {
+      if (picks[i])
+        indexes.push_back(i);
+    }
+    if (indexes.size() < 2 || indexes.size() % 2 != 0)
+      return pairs;
+
+    const int half = std::min(int(indexes.size()) / 2, kMaxRemapPairs);
+    for (int i = 0; i < half; ++i) {
+      pairs.push_back({ app::Color::fromIndex(indexes[i]),
+                        app::Color::fromIndex(indexes[indexes.size() / 2 + i]) });
+    }
+    return pairs;
+  }
+
+  void setPairs(const RemapPairs& pairs)
+  {
+    m_slots.setPairs(pairs);
+    savePairs();
+  }
+
+  void savePairs()
+  {
+    set_config_string("remap", "pairs", remap_pairs_to_string(m_slots.pairs()).c_str());
+  }
+
+  void loadSets()
+  {
+    if (m_setsLoaded)
+      return;
+    m_setsLoaded = true;
+
+    const int n = std::clamp(get_config_int("remap_sets", "count", 0), 0, 256);
+    for (int i = 0; i < n; ++i) {
+      const std::string key = fmt::format("set{}", i);
+      RemapPairs pairs = remap_pairs_from_string(get_config_string("remap_sets", key.c_str(), ""));
+      if (!pairs.empty())
+        m_sets.push_back(pairs);
+    }
+  }
+
+  void saveSets()
+  {
+    if (!m_setsLoaded)
+      return;
+
+    const int n = int(m_sets.size());
+    set_config_int("remap_sets", "count", n);
+    for (int i = 0; i < n; ++i) {
+      const std::string key = fmt::format("set{}", i);
+      set_config_string("remap_sets", key.c_str(), remap_pairs_to_string(m_sets[i]).c_str());
+    }
+  }
+
+  IconButton m_button;
+  RemapSlots m_slots;
+  std::vector<RemapPairs> m_sets;
+  bool m_setsLoaded = false;
 };
 
 class ContextBar::InkOpacityField : public AlphaEntry {
@@ -2064,6 +2238,7 @@ ContextBar::ContextBar(TooltipManager* tooltipManager, ColorBar* colorBar)
   addChild(m_inkOpacityLabel = new Label(Strings::general_opacity()));
   addChild(m_inkOpacity = new InkOpacityField());
   addChild(m_inkShades = new InkShadesField(colorBar));
+  addChild(m_inkRemap = new InkRemapField());
 
   addChild(m_eyedropperField = new EyedropperField());
 
@@ -2329,6 +2504,7 @@ void ContextBar::updateForTool(tools::Tool* tool)
 
   bool hasInkWithOpacity = false;
   bool hasInkShades = false;
+  bool hasInkRemap = false;
 
   if (toolPref) {
     m_tolerance->setTextf("%d", toolPref->tolerance());
@@ -2340,6 +2516,7 @@ void ContextBar::updateForTool(tools::Tool* tool)
     hasInkWithOpacity = ((isPaint && tools::inkHasOpacity(toolPref->ink())) || (isEffect));
 
     hasInkShades = (isPaint && !isEffect && toolPref->ink() == InkType::SHADING);
+    hasInkRemap = (isPaint && !isEffect && toolPref->ink() == InkType::REMAP);
 
     m_freehandAlgo->setFreehandAlgorithm(toolPref->freehandAlgorithm());
 
@@ -2422,6 +2599,7 @@ void ContextBar::updateForTool(tools::Tool* tool)
   m_inkOpacityLabel->setVisible(showOpacity);
   m_inkOpacity->setVisible(showOpacity);
   m_inkShades->setVisible(hasInkShades);
+  m_inkRemap->setVisible(hasInkRemap);
   m_eyedropperField->setVisible(isEyedropper);
   m_autoSelectLayer->setVisible(isMove);
   m_dynamics->setVisible(supportDynamics);
@@ -2727,6 +2905,11 @@ void ContextBar::reverseShadeColors()
   m_inkShades->reverseShadeColors();
 }
 
+RemapPairs ContextBar::getRemapPairs() const
+{
+  return m_inkRemap->pairs();
+}
+
 void ContextBar::setInkType(tools::InkType type)
 {
   m_inkType->setInkType(type);
@@ -2782,6 +2965,7 @@ void ContextBar::setupTooltips(TooltipManager* tooltipManager)
   tooltipManager->addTooltipFor(m_inkType->at(0), Strings::context_bar_ink(), BOTTOM);
   tooltipManager->addTooltipFor(m_inkOpacity, Strings::context_bar_opacity(), BOTTOM);
   tooltipManager->addTooltipFor(m_inkShades->at(0), Strings::context_bar_shades(), BOTTOM);
+  tooltipManager->addTooltipFor(m_inkRemap->slots(), Strings::remap_slots_tooltip(), BOTTOM);
   tooltipManager->addTooltipFor(m_sprayWidth, Strings::context_bar_spray_width(), BOTTOM);
   tooltipManager->addTooltipFor(m_spraySpeed, Strings::context_bar_spray_speed(), BOTTOM);
   tooltipManager->addTooltipFor(m_pivot->at(0), Strings::context_bar_rotation_pivot(), BOTTOM);

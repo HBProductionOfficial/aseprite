@@ -117,6 +117,7 @@ protected:
   std::unique_ptr<tools::Symmetry> m_symmetry;
   Shade m_shade;
   std::unique_ptr<doc::Remap> m_shadingRemap;
+  std::unique_ptr<PixelRemapTable> m_remapTable;
   bool m_tilesMode;
   app::ColorTarget m_colorTarget;
   doc::color_t m_fgColor;
@@ -277,10 +278,65 @@ public:
         App::instance()->contextBar()->createShadeRemap(m_button == tools::ToolLoop::Left));
     }
 
+    // In Tiles mode the ink paints tiles, there are no colors to remap
+    if (params.inkType == tools::InkType::REMAP && !m_tilesMode) {
+      m_remapTable = std::make_unique<PixelRemapTable>(m_sprite->pixelFormat());
+      if (auto* contextBar = App::instance()->contextBar()) {
+        // The right button turns bottom colors into top colors
+        RemapPairs pairs = contextBar->getRemapPairs();
+        if (m_button != tools::ToolLoop::Left)
+          pairs = reverse_remap_pairs(pairs);
+        const Palette* palette = m_sprite->palette(m_frame);
+        for (const RemapPair& pair : pairs) {
+          // Indexes saved with a bigger palette than this sprite's
+          if (!pair.from.isValid() || !pair.to.isValid())
+            continue;
+
+          doc::color_t from;
+          if (!remapSourceColor(pair.from, palette, from))
+            continue;
+
+          // Background layers can't be transparent: erasing paints
+          // the background color, as the Eraser does.
+          const bool erase = (pair.to.getType() == app::Color::MaskType);
+          const app::Color& to = (erase && m_colorTarget.isBackground() ? params.bg : pair.to);
+          m_remapTable->add(from, color_utils::color_for_target(to, m_colorTarget));
+        }
+      }
+
+      // Overlap reads back painted pixels (spray), which could chain A->B->C
+      // in one stroke. Accumulate reads the image from before the stroke.
+      if (m_tracePolicy == tools::TracePolicy::Overlap)
+        m_tracePolicy = tools::TracePolicy::Accumulate;
+    }
+
     updateAllVisibleRegion();
   }
 
   ~ToolLoopBase() { m_origBrush->setPatternOrigin(m_oldPatternOrigin); }
+
+  // In indexed sprites an RGB/gray color only matches a palette entry
+  // with exactly that color, never the nearest one.
+  bool remapSourceColor(const app::Color& color, const Palette* palette, doc::color_t& result) const
+  {
+    if (m_sprite->pixelFormat() == IMAGE_INDEXED && color.getType() != app::Color::IndexType &&
+        color.getType() != app::Color::MaskType) {
+      // On transparent layers the transparent index is not a color,
+      // even if its palette entry has the same RGB values.
+      const int mask = (m_colorTarget.isTransparent() ? int(m_colorTarget.maskColor()) : -1);
+      const int i = palette->findExactMatch(color.getRed(),
+                                            color.getGreen(),
+                                            color.getBlue(),
+                                            color.getAlpha(),
+                                            mask);
+      if (i < 0)
+        return false;
+      result = doc::color_t(i);
+      return true;
+    }
+    result = color_utils::color_for_target_mask(color, m_colorTarget);
+    return true;
+  }
 
   void forceSnapToTiles()
   {
@@ -377,6 +433,7 @@ public:
   tools::Symmetry* getSymmetry() override { return m_symmetry.get(); }
   const Shade& getShade() override { return m_shade; }
   doc::Remap* getShadingRemap() override { return m_shadingRemap.get(); }
+  const PixelRemapTable* getRemapTable() override { return m_remapTable.get(); }
 
   void limitDirtyAreaToViewport(gfx::Region& rgn) override { rgn &= m_allVisibleRgn; }
 

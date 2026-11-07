@@ -52,6 +52,9 @@ public:
   // Returns true if this ink is shading
   virtual bool isShading() const { return false; }
 
+  // Returns true if this ink replaces colors using the Remap pairs
+  virtual bool isRemap() const { return false; }
+
   // Returns true if this ink moves the scroll only
   virtual bool isScrollMovement() const { return false; }
 

@@ -10,6 +10,7 @@
 #pragma once
 
 #include "app/pref/preferences.h"
+#include "app/remap_pairs.h"
 #include "app/shade.h"
 #include "app/tools/active_tool_observer.h"
 #include "app/tools/dynamics.h"
@@ -88,6 +89,8 @@ public:
   void reverseShadeColors();
   Shade getShade() const;
 
+  RemapPairs getRemapPairs() const;
+
   void setInkType(tools::InkType type);
 
   // For text tool
@@ -158,6 +161,7 @@ private:
   class InkTypeField;
   class InkOpacityField;
   class InkShadesField;
+  class InkRemapField;
   class SprayWidthField;
   class SpraySpeedField;
   class SelectionModeField;
@@ -192,6 +196,7 @@ private:
   ui::Label* m_inkOpacityLabel;
   InkOpacityField* m_inkOpacity;
   InkShadesField* m_inkShades;
+  InkRemapField* m_inkRemap;
   EyedropperField* m_eyedropperField;
   AutoSelectLayerField* m_autoSelectLayer;
   ui::Box* m_freehandBox;

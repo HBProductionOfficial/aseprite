@@ -497,6 +497,7 @@
       <key command="SetInkType"><param name="type" value="copy-color" /></key>
       <key command="SetInkType"><param name="type" value="lock-alpha" /></key>
       <key command="SetInkType"><param name="type" value="shading" /></key>
+      <key command="SetInkType"><param name="type" value="remap" /></key>
       <key command="SetSameInk" />
       <key command="SetColorSelector">
         <param name="type" value="tint-shade-tone" />
@@ -1295,8 +1296,11 @@
       <item command="SetInkType" text="@inks.lock_alpha">
         <param name="type" value="lock-alpha" />
       </item>
-      <item command="SetInkType" text="@inks.shading" group="ink_types">
+      <item command="SetInkType" text="@inks.shading">
         <param name="type" value="shading" />
+      </item>
+      <item command="SetInkType" text="@inks.remap" group="ink_types">
+        <param name="type" value="remap" />
       </item>
       <separator />
       <item command="SetSameInk" text="@general.same_in_all_tools" group="ink_options" />

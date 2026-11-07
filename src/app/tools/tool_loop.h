@@ -9,6 +9,7 @@
 #define APP_TOOLS_TOOL_LOOP_H_INCLUDED
 #pragma once
 
+#include "app/remap_pairs.h"
 #include "app/shade.h"
 #include "app/tools/dynamics.h"
 #include "app/tools/stroke.h"
@@ -244,6 +245,10 @@ public:
 
   virtual const Shade& getShade() = 0;
   virtual const doc::Remap* getShadingRemap() = 0;
+
+  // Remap pairs in the layer pixel format, reversed for the right button.
+  // Null if the ink isn't Remap.
+  virtual const PixelRemapTable* getRemapTable() = 0;
 
   virtual void limitDirtyAreaToViewport(gfx::Region& rgn) = 0;
 

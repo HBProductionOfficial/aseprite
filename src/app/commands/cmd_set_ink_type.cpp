@@ -65,6 +65,7 @@ std::string SetInkTypeCommand::onGetFriendlyName() const
     case tools::InkType::COPY_COLOR:        ink = Strings::inks_copy_color(); break;
     case tools::InkType::LOCK_ALPHA:        ink = Strings::inks_lock_alpha(); break;
     case tools::InkType::SHADING:           ink = Strings::inks_shading(); break;
+    case tools::InkType::REMAP:             ink = Strings::inks_remap(); break;
   }
   return Strings::commands_SetInkType(ink);
 }

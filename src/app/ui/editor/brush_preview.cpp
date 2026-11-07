@@ -233,7 +233,7 @@ void BrushPreview::show(const gfx::Point& screenPos)
             ( // Use cursor bounds for inks that are effects (eraser, blur, etc.)
               (ink->isEffect()) ||
               // or when the brush color is transparent and we are not in the background layer
-              (!ink->isShading() && (layer && layer->isTransparent()) &&
+              (!ink->isShading() && !ink->isRemap() && (layer && layer->isTransparent()) &&
                ((sprite->pixelFormat() == IMAGE_INDEXED && brush_color == mask_index) ||
                 (sprite->pixelFormat() == IMAGE_RGB && rgba_geta(brush_color) == 0) ||
                 (sprite->pixelFormat() == IMAGE_GRAYSCALE && graya_geta(brush_color) == 0))))) ||
